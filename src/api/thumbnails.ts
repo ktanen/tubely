@@ -4,37 +4,8 @@ import { getVideo, updateVideo } from "../db/videos";
 import type { ApiConfig } from "../config";
 import type { BunRequest } from "bun";
 import { BadRequestError, NotFoundError, UserForbiddenError } from "./errors";
+import { Buffer } from "buffer";
 
-type Thumbnail = {
-  data: ArrayBuffer;
-  mediaType: string;
-};
-
-const videoThumbnails: Map<string, Thumbnail> = new Map();
-
-export async function handlerGetThumbnail(cfg: ApiConfig, req: BunRequest) {
-  const { videoId } = req.params as { videoId?: string };
-  if (!videoId) {
-    throw new BadRequestError("Invalid video ID");
-  }
-
-  const video = getVideo(cfg.db, videoId);
-  if (!video) {
-    throw new NotFoundError("Couldn't find video");
-  }
-
-  const thumbnail = videoThumbnails.get(videoId);
-  if (!thumbnail) {
-    throw new NotFoundError("Thumbnail not found");
-  }
-
-  return new Response(thumbnail.data, {
-    headers: {
-      "Content-Type": thumbnail.mediaType,
-      "Cache-Control": "no-store",
-    },
-  });
-}
 
 export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
   const { videoId } = req.params as { videoId?: string };
@@ -63,6 +34,9 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
 
     const fileType = thumbnail.type;
     const imageData = await thumbnail.arrayBuffer();
+    const buffer = Buffer.from(imageData);
+    const imageDataString = buffer.toString("base64");
+
     const db = cfg.db
     const video = getVideo(db, videoId);
 
@@ -73,16 +47,13 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
       throw new UserForbiddenError("Not authorized to update this video");
     }
 
-    
+    const thumbnailURL = `data: ${fileType};base64,${imageDataString}`;
 
     const thumbnailData = {
       data: imageData,
       mediaType: fileType
     };
 
-    videoThumbnails.set(videoId, thumbnailData);
-
-    const thumbnailURL = `http://localhost:${cfg.port}/api/thumbnails/${videoId}`;
 
     video.thumbnailURL = thumbnailURL;
 
