@@ -89,7 +89,7 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
     await updateVideo(db, video);
 
 
-
+    
 
   return respondWithJSON(200, video);
 }
