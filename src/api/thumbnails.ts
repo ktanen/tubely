@@ -4,7 +4,7 @@ import { getVideo, updateVideo } from "../db/videos";
 import type { ApiConfig } from "../config";
 import type { BunRequest } from "bun";
 import { BadRequestError, NotFoundError, UserForbiddenError } from "./errors";
-import { Buffer } from "buffer";
+import path from "path";
 
 
 export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
@@ -32,10 +32,9 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
       throw new BadRequestError("Thumbnail file too large; must be 10MB or smaller");
     }
 
-    const fileType = thumbnail.type;
-    const imageData = await thumbnail.arrayBuffer();
-    const buffer = Buffer.from(imageData);
-    const imageDataString = buffer.toString("base64");
+   
+
+    
 
     const db = cfg.db
     const video = getVideo(db, videoId);
@@ -47,12 +46,22 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
       throw new UserForbiddenError("Not authorized to update this video");
     }
 
-    const thumbnailURL = `data: ${fileType};base64,${imageDataString}`;
+    const fileType = thumbnail.type;
 
-    const thumbnailData = {
-      data: imageData,
-      mediaType: fileType
-    };
+    if (!(fileType === "image/jpeg" || fileType === "image/png")) {
+      throw new BadRequestError("Thumbnails must be either JPEGs or PNGs");
+    }
+
+    const fileExtension = `.${fileType.split("/")[1]}`;
+
+    const thumbnailFilePath = path.join(cfg.assetsRoot, videoId + fileExtension);
+
+    await Bun.write(thumbnailFilePath, thumbnail);
+
+
+
+    const thumbnailURL = `http://localhost:${cfg.port}/assets/${videoId}${fileExtension}`;
+
 
 
     video.thumbnailURL = thumbnailURL;
