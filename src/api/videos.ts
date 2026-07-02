@@ -48,17 +48,26 @@ export async function handlerUploadVideo(cfg: ApiConfig, req: BunRequest) {
 
 const videoID = video.id;
 
+
+
+
 const filename = `${videoID}.mp4`
 
 const tempFilePath = path.join("/tmp", filename);
 
+
 await Bun.write(tempFilePath, videoFile);
 
-const s3File = cfg.s3Client.file(filename, {type: fileType});
+
+const aspectRatio = await getVideoAspectRatio(tempFilePath);
+
+const fileKey = `${aspectRatio}/${filename}`;
+
+const s3File = cfg.s3Client.file(fileKey, {type: fileType});
 
 await Bun.write(s3File, Bun.file(tempFilePath));  
 
-const videoURL = `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${filename}`;
+const videoURL = `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${fileKey}`;
 
   video.videoURL = videoURL;
 
@@ -67,4 +76,36 @@ const videoURL = `https://${cfg.s3Bucket}.s3.${cfg.s3Region}.amazonaws.com/${fil
   await Bun.file(tempFilePath).delete();
 
   return respondWithJSON(200, video);
+}
+
+export async function getVideoAspectRatio(filePath: string): Promise<string> {
+  const proc = Bun.spawn(["ffprobe", "-v", "error", "-select_streams", "v:0", 
+    "-show_entries", "stream=width,height", "-of", "json", filePath], 
+  {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  const stdoutText = await new Response(proc.stdout).text();
+  const stderrText = await new Response(proc.stderr).text();
+
+  const exitCode = await proc.exited;
+
+  if (exitCode !== 0) {
+    throw new Error(`ffprobe failed: ${stderrText}`);
+  }
+
+  const streamsJSON = JSON.parse(stdoutText);
+
+  const width = streamsJSON.streams[0].width;
+  const height = streamsJSON.streams[0].height;
+
+  const isLandscape = (width === Math.round(16 * (height / 9)));
+  const isPortrait = (width === Math.round(9 * (height / 16)));
+
+  const aspectRatio = isLandscape ? "landscape" : isPortrait ? "portrait" : "other";
+
+  return aspectRatio;
+
+
 }
